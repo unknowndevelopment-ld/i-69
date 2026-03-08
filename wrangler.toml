@@ -1,0 +1,17 @@
+name = "i69-storage"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# R2 bucket for file storage
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "i69-storage-bucket"
+
+# D1 database for users, sessions, and usage
+[[d1_databases]]
+binding = "DB"
+database_name = "i69-storage-db"
+database_id = "npx wrangler d1 create i69-storage-db"
+
+# Optional: use vars for secrets (e.g. SESSION_SECRET set via wrangler secret put SESSION_SECRET)
+# vars = { ENVIRONMENT = "production" }

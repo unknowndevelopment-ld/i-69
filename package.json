@@ -1,0 +1,20 @@
+{
+  "name": "i69-storage",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:create": "wrangler d1 create i69-storage-db",
+    "db:migrate": "wrangler d1 migrations apply i69-storage-db",
+    "db:local": "wrangler d1 migrations apply i69-storage-db --local"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "typescript": "^5.3.3",
+    "wrangler": "^3.91.0"
+  },
+  "dependencies": {
+    "hono": "^4.6.0"
+  }
+}
