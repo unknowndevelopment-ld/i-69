@@ -567,7 +567,7 @@ dashboard.get("/dashboard/:userId/storage", async (c) => {
   const err = ensureUserMatch(c, userId);
   if (err) return err;
   const files = await c.env.DB.prepare(
-    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type, asset_id FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
+    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
   )
     .bind(user.id)
     .all();
