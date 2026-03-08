@@ -34,13 +34,22 @@ database_id = "YOUR_DATABASE_ID_HERE"
 
 ### 2. Run migrations
 
-Both migrations (schema + `media_type` for dashboard/storage) must be applied:
+Apply all migrations (schema, `media_type`, `public_id`, backfill):
 
 ```bash
 npm install
 npm run db:local    # for local dev
-npm run db:migrate  # for production (run before first deploy)
+npx wrangler d1 migrations apply i69-storage-db --remote   # production
 ```
+
+**If you get `duplicate column name: media_type`:** your remote DB already has that column (e.g. from an earlier run). Mark 0001 as applied, then run migrations again:
+
+```bash
+npx wrangler d1 execute i69-storage-db --remote --command "INSERT INTO d1_migrations (name) VALUES ('0001_media_type.sql');"
+npx wrangler d1 migrations apply i69-storage-db --remote
+```
+
+(If the insert fails, the migrations table may use a different column name; run `SELECT * FROM d1_migrations LIMIT 1;` to see the schema and use the correct column in the INSERT.)
 
 ### 3. Give existing users a URL id (if you had users before public_id)
 
@@ -102,3 +111,19 @@ Then open the Worker URL (e.g. `https://i69-storage.<your-subdomain>.workers.dev
 - **Hono** – Routing and HTML.
 - **D1** – Users, sessions, file metadata, `used_bytes` / `quota_gb`.
 - **R2** – File storage; keys like `users/{userId}/{timestamp}-{filename}`.
+
+## UI styles you can build
+
+With the same stack (HTML + CSS + optional JS), you can aim for many different looks:
+
+- **Minimal / clean** – Lots of whitespace, simple typography, few colors (like the current app).
+- **Dashboard / admin** – Sidebar nav, cards, tables, charts (current layout).
+- **Glassmorphism** – Frosted glass panels, blur, light borders.
+- **Brutalist** – Raw typography, high contrast, no rounded corners, bold borders.
+- **Neumorphism** – Soft shadows, “pressed” or “raised” buttons and cards.
+- **Retro / pixel** – Pixel fonts, chunky borders, limited palette.
+- **Terminal / CLI** – Monospace font, green-on-black or amber, code-style layout.
+- **Bento / grid** – Card grid with mixed sizes (like Apple or Notion).
+- **Editorial** – Large type, serif fonts, magazine-style columns.
+
+The app uses **DM Sans**, a neutral dark theme, and an indigo accent so it feels like a modern dashboard. Swap fonts and CSS variables to shift the vibe without changing the structure.

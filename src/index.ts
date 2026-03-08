@@ -14,50 +14,100 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${title} – i69 Storage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet" />
   <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 1.5rem; background: #0f0f12; color: #e4e4e7; }
-    a { color: #a78bfa; }
-    h1 { font-size: 1.5rem; margin-top: 0; }
+    :root {
+      --bg: #0a0a0c;
+      --surface: #111113;
+      --surface-hover: #18181b;
+      --border: #1f1f23;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --accent: #6366f1;
+      --accent-hover: #4f46e5;
+      --danger: #ef4444;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; line-height: 1.5; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
+    h2 { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.75rem; }
     form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 320px; }
-    input[type=email], input[type=password], input[type=text] { padding: 0.5rem 0.75rem; border: 1px solid #3f3f46; border-radius: 6px; background: #18181b; color: #fff; }
-    button, .btn { padding: 0.5rem 1rem; border-radius: 6px; border: none; cursor: pointer; text-decoration: none; display: inline-block; font-size: 0.875rem; }
-    .btn-primary { background: #7c3aed; color: #fff; }
-    .btn-primary:hover { background: #6d28d9; }
-    .btn-ghost { background: transparent; color: #a78bfa; }
-    .btn-danger { background: #dc2626; color: #fff; }
+    input[type=email], input[type=password], input[type=text] {
+      padding: 0.625rem 0.875rem; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--surface); color: var(--text); font: inherit;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    button, .btn {
+      padding: 0.5rem 1rem; border-radius: var(--radius-sm); border: none; cursor: pointer;
+      font: inherit; font-weight: 500; text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-hover); text-decoration: none; }
+    .btn-ghost { background: transparent; color: var(--accent); }
+    .btn-ghost:hover { background: var(--surface-hover); text-decoration: none; }
+    .btn-danger { background: var(--danger); color: #fff; font-size: 0.8125rem; }
+    .btn-danger:hover { filter: brightness(1.1); text-decoration: none; }
     .error { color: #f87171; font-size: 0.875rem; }
     .success { color: #4ade80; font-size: 0.875rem; }
-    nav { margin-bottom: 1.5rem; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #27272a; }
-    .usage { font-size: 0.875rem; color: #a1a1aa; margin-bottom: 1rem; }
-    .root-badge { background: #7c3aed; color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
     .app { display: flex; min-height: 100vh; }
-    .sidebar { width: 220px; background: #18181b; padding: 1rem; display: flex; flex-direction: column; }
-    .sidebar a { color: #a1a1aa; text-decoration: none; padding: 0.5rem 0.75rem; border-radius: 6px; margin-bottom: 2px; }
-    .sidebar a:hover, .sidebar a.active { color: #fff; background: #27272a; }
-    .sidebar .brand { font-weight: 600; color: #fff; margin-bottom: 1rem; padding: 0 0.75rem; }
-    .sidebar .nav { flex: 1; }
-    .sidebar .user { font-size: 0.75rem; color: #71717a; padding: 0.75rem; margin-top: auto; border-top: 1px solid #27272a; }
-    .main { flex: 1; padding: 1.5rem; }
-    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-    .card { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; }
-    .card h3 { font-size: 0.75rem; color: #71717a; margin: 0 0 0.25rem 0; text-transform: uppercase; }
-    .card .value { font-size: 1.5rem; font-weight: 600; }
-    .chart-wrap { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; max-width: 640px; }
-    .chart-wrap h3 { margin-top: 0; font-size: 1rem; }
-    .upload-zone { border: 2px dashed #3f3f46; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; margin-bottom: 1rem; }
-    .upload-zone:hover { border-color: #7c3aed; background: #18181b; }
-    .upload-zone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
-    .queue-item { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; background: #18181b; border-radius: 6px; margin-bottom: 0.5rem; }
-    .queue-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-    .queue-item .status { color: #71717a; font-size: 0.875rem; margin-left: 0.5rem; }
-    .queue-item .remove { cursor: pointer; color: #71717a; }
-    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
-    .modal-inner { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 1.5rem; max-width: 480px; width: 90%; }
-    .modal-inner h2 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
-    .modal-inner .close { background: none; border: none; color: #71717a; cursor: pointer; font-size: 1.25rem; }
+    .sidebar {
+      width: 240px; background: var(--surface); border-right: 1px solid var(--border);
+      padding: 1.25rem 1rem; display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    .sidebar .brand { font-weight: 700; font-size: 1.125rem; color: var(--text); margin-bottom: 1.5rem; padding: 0 0.5rem; letter-spacing: -0.02em; }
+    .sidebar .nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+    .sidebar .nav a {
+      color: var(--text-muted); padding: 0.5rem 0.75rem; border-radius: var(--radius-sm);
+      font-weight: 500; transition: color .15s, background .15s;
+    }
+    .sidebar .nav a:hover { color: var(--text); background: var(--surface-hover); text-decoration: none; }
+    .sidebar .nav a.active { color: var(--accent); background: rgba(99,102,241,.1); text-decoration: none; }
+    .sidebar .user { font-size: 0.75rem; color: var(--text-muted); padding: 0.75rem 0.5rem; margin-top: auto; border-top: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; }
+    .main { flex: 1; padding: 1.75rem 2rem; max-width: 960px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+    .card h3 { font-size: 0.6875rem; color: var(--text-muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+    .card .value { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1.5rem; }
+    .chart-wrap h3 { margin-bottom: 0.25rem; }
+    .chart-wrap p.sub { color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem; }
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius); padding: 2.5rem; text-align: center; cursor: pointer;
+      background: var(--surface); transition: border-color .2s, background .2s;
+    }
+    .upload-zone:hover { border-color: var(--accent); background: rgba(99,102,241,.05); }
+    .upload-zone .icon { font-size: 2.5rem; margin-bottom: 0.5rem; opacity: 0.7; }
+    .upload-zone .hint { color: var(--text-muted); font-size: 0.875rem; }
+    .queue-item {
+      display: flex; align-items: center; justify-content: space-between; padding: 0.625rem 0.875rem;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 0.5rem;
+    }
+    .queue-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; font-size: 0.875rem; }
+    .queue-item .status { color: var(--text-muted); font-size: 0.8125rem; margin-left: 0.75rem; }
+    .queue-item .remove { cursor: pointer; color: var(--text-muted); padding: 0 0.25rem; }
+    .usage { font-size: 0.875rem; color: var(--text-muted); margin-bottom: 1rem; }
+    .root-badge { background: var(--accent); color: #fff; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; margin-left: 0.5rem; }
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-top: 1.5rem; }
+    .file-table { width: 100%; border-collapse: collapse; }
+    .file-table th { text-align: left; padding: 0.75rem 1rem; font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); background: var(--surface-hover); border-bottom: 1px solid var(--border); }
+    .file-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+    .file-table tr:last-child td { border-bottom: none; }
+    .file-table tr:hover td { background: var(--surface-hover); }
+    .file-table .actions { display: flex; align-items: center; gap: 0.5rem; }
+    .file-table .type-pill { font-size: 0.6875rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: var(--surface-hover); color: var(--text-muted); }
+    .empty-state { text-align: center; padding: 3rem 1.5rem; color: var(--text-muted); }
+    .empty-state p { margin-bottom: 0.5rem; }
+    .auth-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.5rem; }
+    .auth-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 2rem; width: 100%; max-width: 360px; }
+    .auth-card h1 { margin-bottom: 0.5rem; }
+    .auth-card form { max-width: none; }
+    .auth-card .link { margin-top: 1rem; font-size: 0.875rem; }
   </style>
 </head>
 <body>
@@ -65,19 +115,18 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
 </body>
 </html>`;
 
-function SIDEBAR(user: User, active: "dashboard" | "upload" | "storage" | "admin", userId: string) {
+function SIDEBAR(user: User, active: "dashboard" | "storage" | "admin", userId: string) {
   return html`
-  <div class="sidebar">
+  <aside class="sidebar">
     <div class="brand">i69 Storage</div>
     <nav class="nav">
       <a href="/dashboard/${userId}" class="${active === "dashboard" ? "active" : ""}">Dashboard</a>
-      <a href="/dashboard/${userId}/upload" class="${active === "upload" ? "active" : ""}">Upload</a>
-      <a href="/storage/${userId}" class="${active === "storage" ? "active" : ""}">Storage</a>
+      <a href="/dashboard/${userId}/storage" class="${active === "storage" ? "active" : ""}">Storage</a>
       ${user.is_root ? html`<a href="/admin" class="${active === "admin" ? "active" : ""}">Admin</a>` : ""}
       <a href="/logout">Log out</a>
     </nav>
     <div class="user">${escapeHtml(user.email)}</div>
-  </div>`;
+  </aside>`;
 }
 
 async function getCurrentUser(c: any): Promise<User | null> {
@@ -131,14 +180,19 @@ app.get("/login", (c) =>
     LAYOUT(
       "Login",
       html`
-        <nav><a href="/signup">Sign up</a></nav>
-        <h1>Log in</h1>
-        <form method="post" action="/login">
-          <input type="email" name="email" placeholder="Email" required />
-          <input type="password" name="password" placeholder="Password" required />
-          <button type="submit" class="btn btn-primary">Log in</button>
-        </form>
-        ${c.get("flash_error") ? html`<p class="error">${c.get("flash_error")}</p>` : null}
+        <div class="auth-page">
+          <div class="auth-card">
+            <h1>Log in</h1>
+            <p class="usage" style="margin-bottom:1rem;">Sign in to your account</p>
+            <form method="post" action="/login">
+              <input type="email" name="email" placeholder="Email" required />
+              <input type="password" name="password" placeholder="Password" required />
+              <button type="submit" class="btn btn-primary">Log in</button>
+            </form>
+            <p class="link">No account? <a href="/signup">Sign up</a></p>
+            ${c.get("flash_error") ? html`<p class="error">${c.get("flash_error")}</p>` : null}
+          </div>
+        </div>
       `
     )
   )
@@ -220,15 +274,19 @@ app.get("/signup", (c) =>
     LAYOUT(
       "Sign up",
       html`
-        <nav><a href="/login">Log in</a></nav>
-        <h1>Sign up</h1>
-        <p class="usage">New accounts get ${DEFAULT_QUOTA_GB} GB storage (max ${MAX_QUOTA_GB} GB).</p>
-        <form method="post" action="/signup">
-          <input type="email" name="email" placeholder="Email" required />
-          <input type="password" name="password" placeholder="Password" required minlength="8" />
-          <button type="submit" class="btn btn-primary">Sign up</button>
-        </form>
-        ${c.get("flash_error") ? html`<p class="error">${c.get("flash_error")}</p>` : null}
+        <div class="auth-page">
+          <div class="auth-card">
+            <h1>Sign up</h1>
+            <p class="usage" style="margin-bottom:1rem;">New accounts get ${DEFAULT_QUOTA_GB} GB storage (max ${MAX_QUOTA_GB} GB).</p>
+            <form method="post" action="/signup">
+              <input type="email" name="email" placeholder="Email" required />
+              <input type="password" name="password" placeholder="Password" required minlength="8" />
+              <button type="submit" class="btn btn-primary">Sign up</button>
+            </form>
+            <p class="link">Already have an account? <a href="/login">Log in</a></p>
+            ${c.get("flash_error") ? html`<p class="error">${c.get("flash_error")}</p>` : null}
+          </div>
+        </div>
       `
     )
   )
@@ -321,11 +379,11 @@ dashboard.get("/dashboard/:userId", async (c) => {
               <div class="card"><h3>Total File Size</h3><div class="value" id="stat-totalsize">–</div></div>
             </div>
             <div class="chart-wrap">
-              <h3>Monthly Upload Trends</h3>
-              <p style="color:#71717a;font-size:0.875rem;margin-top:0;">Number of uploads by media type per month</p>
+              <h3>Monthly upload trends</h3>
+              <p class="sub">Number of uploads by media type per month</p>
               <canvas id="chart-trends" width="600" height="280"></canvas>
             </div>
-            <p><a href="/dashboard/${userId}/upload">Upload files</a> · <a href="/storage/${userId}">Storage</a></p>
+            <p><a href="/dashboard/${userId}/storage">Upload & manage files →</a></p>
           </main>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -446,14 +504,28 @@ dashboard.get("/api/stats", async (c) => {
   });
 });
 
-// ---------- Storage: redirect /storage -> /storage/:userId ----------
+// ---------- Redirects: /storage and /storage/:userId -> /dashboard/:userId/storage ----------
 dashboard.get("/storage", async (c) => {
   const user = c.get("user");
-  return c.redirect(`/storage/${user.public_id}`);
+  return c.redirect(`/dashboard/${user.public_id}/storage`);
+});
+dashboard.get("/storage/:userId", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  return c.redirect(`/dashboard/${userId}/storage`);
+});
+dashboard.get("/dashboard/:userId/upload", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  return c.redirect(`/dashboard/${userId}/storage`);
 });
 
-// ---------- Storage page: file list + upload queue ----------
-dashboard.get("/storage/:userId", async (c) => {
+// ---------- Storage page: /dashboard/:userId/storage (upload + files in one place) ----------
+dashboard.get("/dashboard/:userId/storage", async (c) => {
   const user = c.get("user");
   const userId = c.req.param("userId");
   const err = ensureUserMatch(c, userId);
@@ -473,64 +545,43 @@ dashboard.get("/storage/:userId", async (c) => {
           ${SIDEBAR(user, "storage", userId)}
           <main class="main">
             <h1>Storage</h1>
-            <p class="usage">${usedGb} GB / ${quotaGb} GB used</p>
-            <a href="/dashboard/${userId}/upload" class="btn btn-primary">Upload Assets</a>
-            <h2 style="margin-top:1.5rem;">Your files</h2>
-            ${(files.results?.length ?? 0) === 0
-              ? html`<p>No files yet. <a href="/dashboard/${userId}/upload">Upload assets</a>.</p>`
-              : html`
-              <table>
-                <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
-                <tbody id="file-list">
-                  ${raw(
-                    (files.results as any[]).map(
-                      (f: any) =>
-                        `<tr data-id="${f.id}">
-                          <td>${escapeHtml(f.filename)}</td>
-                          <td>${escapeHtml(f.media_type || "other")}</td>
-                          <td>${formatBytes(f.size_bytes)}</td>
-                          <td>${escapeHtml(f.uploaded_at)}</td>
-                          <td><a href="/storage/${userId}/download/${f.id}" class="btn btn-ghost">Download</a>
-                            <form method="post" action="/storage/${userId}/delete" style="display:inline" onsubmit="return confirm('Delete this file?');">
-                              <input type="hidden" name="id" value="${f.id}" />
-                              <button type="submit" class="btn btn-danger">Delete</button>
-                            </form></td>
-                        </tr>`
-                    ).join("")
-                  )}
-                </tbody>
-              </table>`}
-          </main>
-        </div>
-      `
-    )
-  );
-});
-
-// ---------- Upload page: /dashboard/:userId/upload ----------
-dashboard.get("/dashboard/:userId/upload", async (c) => {
-  const user = c.get("user");
-  const userId = c.req.param("userId");
-  const err = ensureUserMatch(c, userId);
-  if (err) return err;
-  return c.html(
-    LAYOUT(
-      "Upload",
-      html`
-        <div class="app">
-          ${SIDEBAR(user, "upload", userId)}
-          <main class="main">
-            <h1>Upload Assets</h1>
+            <p class="usage">${usedGb} GB of ${quotaGb} GB used</p>
             <div class="upload-zone" id="upload-zone">
               <div class="icon">↑</div>
-              <div>Drag & drop image, video, or audio files here, or click to select</div>
+              <p class="hint">Drag & drop image, video, or audio files here, or click to select</p>
             </div>
             <input type="file" id="upload-input" multiple accept="image/*,video/*,audio/*" style="display:none;" />
-            <div id="upload-queue"></div>
-            <div style="margin-top:1rem;">
-              <button type="button" class="btn btn-primary" id="upload-all-btn" disabled>Upload All</button>
-              <a href="/storage/${userId}" class="btn btn-ghost">View storage</a>
+            <div id="upload-queue" style="margin-top:1rem;"></div>
+            <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center;">
+              <button type="button" class="btn btn-primary" id="upload-all-btn" disabled>Upload all</button>
             </div>
+            <h2 style="margin-top:2rem;">Files</h2>
+            ${(files.results?.length ?? 0) === 0
+              ? html`<div class="panel empty-state"><p>No files yet.</p><p>Add files using the area above.</p></div>`
+              : html`
+              <div class="panel">
+                <table class="file-table">
+                  <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+                  <tbody>
+                    ${raw(
+                      (files.results as any[]).map(
+                        (f: any) =>
+                          `<tr>
+                            <td>${escapeHtml(f.filename)}</td>
+                            <td><span class="type-pill">${escapeHtml(f.media_type || "other")}</span></td>
+                            <td>${formatBytes(f.size_bytes)}</td>
+                            <td>${escapeHtml(f.uploaded_at)}</td>
+                            <td><div class="actions"><a href="/dashboard/${userId}/storage/download/${f.id}" class="btn btn-ghost">Download</a>
+                              <form method="post" action="/dashboard/${userId}/storage/delete" style="display:inline" onsubmit="return confirm('Delete this file?');">
+                                <input type="hidden" name="id" value="${f.id}" />
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                              </form></div></td>
+                          </tr>`
+                      ).join("")
+                    )}
+                  </tbody>
+                </table>
+              </div>`}
           </main>
         </div>
         <script>
@@ -540,21 +591,19 @@ dashboard.get("/dashboard/:userId/upload", async (c) => {
             var input = document.getElementById('upload-input');
             var queueEl = document.getElementById('upload-queue');
             var uploadAllBtn = document.getElementById('upload-all-btn');
+            function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
             function renderQueue() {
               queueEl.innerHTML = queue.map(function(item, i) {
                 var status = item.status || 'Queued';
                 if (item.progress != null) status = 'Uploading ' + item.progress + '%' + (item.eta != null ? ' – ' + item.eta + 's left' : '');
                 if (item.done) status = 'Done';
                 if (item.error) status = 'Failed';
-                return '<div class="queue-item" data-i="' + i + '">' +
-                  '<span class="name">' + (function(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;})(item.file.name) + '</span>' +
-                  '<span class="status">' + status + '</span>' +
-                  (item.done || item.error ? '' : '<span class="remove" data-i="' + i + '" aria-label="Remove">&times;</span>') +
-                  '</div>';
+                return '<div class="queue-item"><span class="name">' + esc(item.file.name) + '</span><span class="status">' + status + '</span>' +
+                  (item.done || item.error ? '' : '<span class="remove" data-i="' + i + '">&times;</span>') + '</div>';
               }).join('');
               uploadAllBtn.disabled = queue.length === 0 || queue.every(function(x) { return x.done || x.error; });
               queueEl.querySelectorAll('.remove').forEach(function(el) {
-                el.onclick = function() { var i = parseInt(el.getAttribute('data-i'), 10); queue.splice(i, 1); renderQueue(); };
+                el.onclick = function() { queue.splice(parseInt(el.getAttribute('data-i'), 10), 1); renderQueue(); };
               });
             }
             function addFiles(files) {
@@ -566,9 +615,9 @@ dashboard.get("/dashboard/:userId/upload", async (c) => {
               renderQueue();
             }
             zone.onclick = function() { input.click(); };
-            zone.ondragover = function(e) { e.preventDefault(); zone.style.borderColor = '#7c3aed'; };
-            zone.ondragleave = function() { zone.style.borderColor = ''; };
-            zone.ondrop = function(e) { e.preventDefault(); zone.style.borderColor = ''; addFiles(e.dataTransfer.files); };
+            zone.ondragover = function(e) { e.preventDefault(); };
+            zone.ondragleave = function() {};
+            zone.ondrop = function(e) { e.preventDefault(); addFiles(e.dataTransfer.files); };
             input.onchange = function() { addFiles(input.files || []); input.value = ''; };
             function uploadOne(item, onProgress) {
               return new Promise(function(resolve, reject) {
@@ -582,17 +631,16 @@ dashboard.get("/dashboard/:userId/upload", async (c) => {
                     loaded = e.loaded;
                     item.progress = Math.round(100 * e.loaded / e.total);
                     var elapsed = (Date.now() - start) / 1000;
-                    var rate = elapsed > 0 ? loaded / elapsed : 0;
-                    item.eta = rate > 0 ? Math.round((e.total - e.loaded) / rate) : null;
+                    item.eta = elapsed > 0 && loaded > 0 ? Math.round((e.total - e.loaded) / (loaded / elapsed)) : null;
                     onProgress();
                   }
                 };
                 xhr.onload = function() {
                   if (xhr.status >= 200 && xhr.status < 300) { item.done = true; resolve(); }
-                  else { item.error = true; reject(new Error(xhr.statusText)); }
+                  else { item.error = true; reject(); }
                   onProgress();
                 };
-                xhr.onerror = function() { item.error = true; onProgress(); reject(new Error('Network error')); };
+                xhr.onerror = function() { item.error = true; onProgress(); reject(); };
                 xhr.open('POST', '/api/upload');
                 xhr.send(fd);
               });
@@ -602,9 +650,8 @@ dashboard.get("/dashboard/:userId/upload", async (c) => {
               if (pending.length === 0) return;
               uploadAllBtn.disabled = true;
               function runNext(idx) {
-                if (idx >= pending.length) { uploadAllBtn.disabled = false; if (queue.every(function(x) { return x.done || x.error; })) setTimeout(function() { location.reload(); }, 800); return; }
-                var item = pending[idx];
-                uploadOne(item, renderQueue).then(function() { runNext(idx + 1); }).catch(function() { runNext(idx + 1); });
+                if (idx >= pending.length) { uploadAllBtn.disabled = false; if (queue.every(function(x) { return x.done || x.error; })) setTimeout(function() { location.reload(); }, 600); return; }
+                uploadOne(pending[idx], renderQueue).then(function() { runNext(idx + 1); }).catch(function() { runNext(idx + 1); });
               }
               runNext(0);
             };
@@ -649,30 +696,30 @@ dashboard.post("/api/upload", async (c) => {
   return c.json({ ok: true, id, filename: file.name });
 });
 
-dashboard.post("/storage/:userId/delete", async (c) => {
+dashboard.post("/dashboard/:userId/storage/delete", async (c) => {
   const user = c.get("user");
   const userId = c.req.param("userId");
   const err = ensureUserMatch(c, userId);
   if (err) return err;
   const form = await c.req.parseBody();
   const id = Number(form["id"]);
-  if (!id) return c.redirect(`/storage/${userId}`);
+  if (!id) return c.redirect(`/dashboard/${userId}/storage`);
   const row = await c.env.DB.prepare(
     "SELECT id, r2_key, size_bytes FROM files WHERE user_id = ? AND id = ?"
   )
     .bind(user.id, id)
     .first();
-  if (!row) return c.redirect(`/storage/${userId}`);
+  if (!row) return c.redirect(`/dashboard/${userId}/storage`);
   const r = row as { r2_key: string; size_bytes: number };
   await c.env.BUCKET.delete(r.r2_key);
   await c.env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
   await c.env.DB.prepare("UPDATE users SET used_bytes = used_bytes - ? WHERE id = ?")
     .bind(r.size_bytes, user.id)
     .run();
-  return c.redirect(`/storage/${userId}`);
+  return c.redirect(`/dashboard/${userId}/storage`);
 });
 
-dashboard.get("/storage/:userId/download/:id", async (c) => {
+dashboard.get("/dashboard/:userId/storage/download/:id", async (c) => {
   const user = c.get("user");
   const userId = c.req.param("userId");
   const err = ensureUserMatch(c, userId);
