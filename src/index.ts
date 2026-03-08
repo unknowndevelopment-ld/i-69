@@ -143,50 +143,66 @@ app.get("/login", (c) =>
 );
 
 app.post("/login", async (c) => {
-  const form = await c.req.parseBody();
-  const email = String(form["email"] ?? "").trim().toLowerCase();
-  const password = String(form["password"] ?? "");
-  if (!email || !password) {
-    return c.html(
-      LAYOUT("Login", html`<nav><a href="/signup">Sign up</a></nav><h1>Log in</h1>
-        <form method="post" action="/login">
-          <input type="email" name="email" placeholder="Email" required />
-          <input type="password" name="password" placeholder="Password" required />
-          <button type="submit" class="btn btn-primary">Log in</button>
-        </form>
-        <p class="error">Email and password required.</p>`)
-    );
+  try {
+    const form = await c.req.parseBody();
+    const email = String(form["email"] ?? "").trim().toLowerCase();
+    const password = String(form["password"] ?? "");
+    if (!email || !password) {
+      return c.html(
+        LAYOUT("Login", html`<nav><a href="/signup">Sign up</a></nav><h1>Log in</h1>
+          <form method="post" action="/login">
+            <input type="email" name="email" placeholder="Email" required />
+            <input type="password" name="password" placeholder="Password" required />
+            <button type="submit" class="btn btn-primary">Log in</button>
+          </form>
+          <p class="error">Email and password required.</p>`)
+      );
+    }
+    const user = await c.env.DB.prepare(
+      "SELECT id, public_id, email, password_hash, quota_gb, used_bytes, is_root FROM users WHERE email = ?"
+    )
+      .bind(email)
+      .first();
+    if (!user || !(await verifyPassword(password, (user as any).password_hash))) {
+      return c.html(
+        LAYOUT("Login", html`<nav><a href="/signup">Sign up</a></nav><h1>Log in</h1>
+          <form method="post" action="/login">
+            <input type="email" name="email" placeholder="Email" required />
+            <input type="password" name="password" placeholder="Password" required />
+            <button type="submit" class="btn btn-primary">Log in</button>
+          </form>
+          <p class="error">Invalid email or password.</p>`)
+      );
+    }
+    const sid = randomSessionId();
+    const expires = sessionExpiry();
+    await c.env.DB.prepare(
+      "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
+    )
+      .bind(sid, (user as any).id, expires)
+      .run();
+    setCookie(c, "sid", sid, { path: "/", httpOnly: true, maxAge: 60 * 60 * 24 * 7, sameSite: "Lax" });
+    let publicId = (user as any).public_id;
+    if (!publicId) {
+      publicId = generatePublicId();
+      await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, (user as any).id).run();
+    }
+    return c.redirect(`/dashboard/${publicId}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("public_id") || msg.includes("no such column")) {
+      return c.html(
+        LAYOUT("Login", html`
+          <nav><a href="/signup">Sign up</a></nav>
+          <h1>Log in</h1>
+          <p class="error">Database schema is outdated. Run migrations on your D1 database:</p>
+          <pre style="background:#18181b;padding:0.75rem;border-radius:6px;font-size:0.875rem;">npx wrangler d1 migrations apply i69-storage-db --remote</pre>
+          <p><a href="/login">Try again</a> after applying migrations.</p>`),
+        503
+      );
+    }
+    throw err;
   }
-  const user = await c.env.DB.prepare(
-    "SELECT id, public_id, email, password_hash, quota_gb, used_bytes, is_root FROM users WHERE email = ?"
-  )
-    .bind(email)
-    .first();
-  if (!user || !(await verifyPassword(password, (user as any).password_hash))) {
-    return c.html(
-      LAYOUT("Login", html`<nav><a href="/signup">Sign up</a></nav><h1>Log in</h1>
-        <form method="post" action="/login">
-          <input type="email" name="email" placeholder="Email" required />
-          <input type="password" name="password" placeholder="Password" required />
-          <button type="submit" class="btn btn-primary">Log in</button>
-        </form>
-        <p class="error">Invalid email or password.</p>`)
-    );
-  }
-  const sid = randomSessionId();
-  const expires = sessionExpiry();
-  await c.env.DB.prepare(
-    "INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)"
-  )
-    .bind(sid, (user as any).id, expires)
-    .run();
-  setCookie(c, "sid", sid, { path: "/", httpOnly: true, maxAge: 60 * 60 * 24 * 7, sameSite: "Lax" });
-  let publicId = (user as any).public_id;
-  if (!publicId) {
-    publicId = generatePublicId();
-    await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, (user as any).id).run();
-  }
-  return c.redirect(`/dashboard/${publicId}`);
 });
 
 app.get("/signup", (c) =>
