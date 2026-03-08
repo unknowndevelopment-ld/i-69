@@ -8,10 +8,12 @@ binding = "BUCKET"
 bucket_name = "i69-storage-bucket"
 
 # D1 database for users, sessions, and usage
+# Create it: npx wrangler d1 create i69-storage-db
+# Then paste the "database_id" from the output below (looks like a UUID, e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
 [[d1_databases]]
 binding = "DB"
 database_name = "i69-storage-db"
-database_id = "npx wrangler d1 create i69-storage-db"
+database_id = "9831cae2-4819-4a6a-910f-019d9d31e92c"
 
 # Optional: use vars for secrets (e.g. SESSION_SECRET set via wrangler secret put SESSION_SECRET)
 # vars = { ENVIRONMENT = "production" }
