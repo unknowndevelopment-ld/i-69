@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { html, raw } from "hono/html";
-import { hashPassword, verifyPassword, randomSessionId, sessionExpiry, generatePublicId } from "./auth";
+import { hashPassword, verifyPassword, randomSessionId, sessionExpiry, generatePublicId, generateAssetId } from "./auth";
 import { DEFAULT_QUOTA_GB, MAX_QUOTA_GB } from "./types";
 import type { Env, User } from "./types";
 
@@ -108,6 +108,25 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
     .auth-card h1 { margin-bottom: 0.5rem; }
     .auth-card form { max-width: none; }
     .auth-card .link { margin-top: 1rem; font-size: 0.875rem; }
+    .icon-s { width: 1.125rem; height: 1.125rem; flex-shrink: 0; vertical-align: middle; }
+    .icon-m { width: 1.25rem; height: 1.25rem; flex-shrink: 0; }
+    .icon-l { width: 2.5rem; height: 2.5rem; flex-shrink: 0; }
+    .file-detail { display: grid; grid-template-columns: 1fr 320px; gap: 1.5rem; margin-top: 1rem; }
+    @media (max-width: 720px) { .file-detail { grid-template-columns: 1fr; } }
+    .file-preview { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; min-height: 280px; display: flex; align-items: center; justify-content: center; }
+    .file-preview img, .file-preview video { max-width: 100%; max-height: 70vh; }
+    .file-preview audio { width: 100%; max-width: 400px; }
+    .file-details-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; height: fit-content; }
+    .file-details-panel .row { display: flex; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; font-size: 0.875rem; }
+    .file-details-panel .row .k { color: var(--text-muted); }
+    .file-details-panel .row .v { word-break: break-all; text-align: right; }
+    .file-details-panel h3 { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 1rem 0 0.5rem 0; }
+    .file-details-panel pre { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.75rem; font-size: 0.75rem; overflow: auto; margin-top: 0.5rem; }
+    .file-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+    .file-actions .btn { font-size: 0.8125rem; }
+    .file-delete-wrap { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+    .back-link { display: inline-flex; align-items: center; gap: 0.5rem; color: var(--text-muted); font-size: 0.875rem; margin-bottom: 1rem; }
+    .back-link:hover { color: var(--accent); text-decoration: none; }
   </style>
 </head>
 <body>
@@ -115,15 +134,31 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
 </body>
 </html>`;
 
+const ICONS = {
+  dashboard: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>',
+  folder: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  shield: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+  logout: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+  upload: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+  download: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  copy: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  external: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>',
+  trash: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+  file: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+  image: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+  video: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>',
+  music: '<svg class="icon-s" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+};
+
 function SIDEBAR(user: User, active: "dashboard" | "storage" | "admin", userId: string) {
   return html`
   <aside class="sidebar">
     <div class="brand">i69 Storage</div>
     <nav class="nav">
-      <a href="/dashboard/${userId}" class="${active === "dashboard" ? "active" : ""}">Dashboard</a>
-      <a href="/dashboard/${userId}/storage" class="${active === "storage" ? "active" : ""}">Storage</a>
-      ${user.is_root ? html`<a href="/admin" class="${active === "admin" ? "active" : ""}">Admin</a>` : ""}
-      <a href="/logout">Log out</a>
+      <a href="/dashboard/${userId}" class="${active === "dashboard" ? "active" : ""}">${raw(ICONS.dashboard)} Dashboard</a>
+      <a href="/dashboard/${userId}/storage" class="${active === "storage" ? "active" : ""}">${raw(ICONS.folder)} Storage</a>
+      ${user.is_root ? html`<a href="/admin" class="${active === "admin" ? "active" : ""}">${raw(ICONS.shield)} Admin</a>` : ""}
+      <a href="/logout">${raw(ICONS.logout)} Log out</a>
     </nav>
     <div class="user">${escapeHtml(user.email)}</div>
   </aside>`;
@@ -383,7 +418,7 @@ dashboard.get("/dashboard/:userId", async (c) => {
               <p class="sub">Number of uploads by media type per month</p>
               <canvas id="chart-trends" width="600" height="280"></canvas>
             </div>
-            <p><a href="/dashboard/${userId}/storage">Upload & manage files →</a></p>
+            <p><a href="/dashboard/${userId}/storage">${raw(ICONS.folder)} Upload & manage files →</a></p>
           </main>
         </div>
         <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
@@ -438,13 +473,14 @@ dashboard.post("/upload", async (c) => {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const r2Key = `users/${user.id}/${Date.now()}-${safeName}`;
   const mediaType = getMediaType(file);
+  const assetId = generateAssetId();
   await c.env.BUCKET.put(r2Key, file.stream(), {
     httpMetadata: { contentType: file.type || "application/octet-stream" },
   });
   await c.env.DB.prepare(
-    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type, asset_id) VALUES (?, ?, ?, ?, ?, ?)"
   )
-    .bind(user.id, r2Key, file.name, size, mediaType)
+    .bind(user.id, r2Key, file.name, size, mediaType, assetId)
     .run();
   await c.env.DB.prepare("UPDATE users SET used_bytes = used_bytes + ? WHERE id = ?")
     .bind(size, user.id)
@@ -531,7 +567,7 @@ dashboard.get("/dashboard/:userId/storage", async (c) => {
   const err = ensureUserMatch(c, userId);
   if (err) return err;
   const files = await c.env.DB.prepare(
-    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
+    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type, asset_id FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
   )
     .bind(user.id)
     .all();
@@ -547,13 +583,13 @@ dashboard.get("/dashboard/:userId/storage", async (c) => {
             <h1>Storage</h1>
             <p class="usage">${usedGb} GB of ${quotaGb} GB used</p>
             <div class="upload-zone" id="upload-zone">
-              <div class="icon">↑</div>
+              <div class="icon" style="opacity:0.7;">${raw(ICONS.upload.replace("icon-s", "icon-l"))}</div>
               <p class="hint">Drag & drop image, video, or audio files here, or click to select</p>
             </div>
             <input type="file" id="upload-input" multiple accept="image/*,video/*,audio/*" style="display:none;" />
             <div id="upload-queue" style="margin-top:1rem;"></div>
             <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center;">
-              <button type="button" class="btn btn-primary" id="upload-all-btn" disabled>Upload all</button>
+              <button type="button" class="btn btn-primary" id="upload-all-btn" disabled>${raw(ICONS.upload)} Upload all</button>
             </div>
             <h2 style="margin-top:2rem;">Files</h2>
             ${(files.results?.length ?? 0) === 0
@@ -565,18 +601,21 @@ dashboard.get("/dashboard/:userId/storage", async (c) => {
                   <tbody>
                     ${raw(
                       (files.results as any[]).map(
-                        (f: any) =>
-                          `<tr>
-                            <td>${escapeHtml(f.filename)}</td>
+                        (f: any) => {
+                          const typeIcon = f.media_type === "image" ? ICONS.image : f.media_type === "video" ? ICONS.video : f.media_type === "audio" ? ICONS.music : ICONS.file;
+                          return `<tr>
+                            <td><a href="/dashboard/${userId}/storage/file/${f.id}" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:0.5rem;">${typeIcon} ${escapeHtml(f.filename)}</a></td>
                             <td><span class="type-pill">${escapeHtml(f.media_type || "other")}</span></td>
                             <td>${formatBytes(f.size_bytes)}</td>
                             <td>${escapeHtml(f.uploaded_at)}</td>
-                            <td><div class="actions"><a href="/dashboard/${userId}/storage/download/${f.id}" class="btn btn-ghost">Download</a>
+                            <td><div class="actions"><a href="/dashboard/${userId}/storage/file/${f.id}" class="btn btn-ghost">${ICONS.external} View</a>
+                              <a href="/dashboard/${userId}/storage/download/${f.id}" class="btn btn-ghost">${ICONS.download} Download</a>
                               <form method="post" action="/dashboard/${userId}/storage/delete" style="display:inline" onsubmit="return confirm('Delete this file?');">
                                 <input type="hidden" name="id" value="${f.id}" />
-                                <button type="submit" class="btn btn-danger">Delete</button>
+                                <button type="submit" class="btn btn-danger">${ICONS.trash} Delete</button>
                               </form></div></td>
-                          </tr>`
+                          </tr>`;
+                        }
                       ).join("")
                     )}
                   </tbody>
@@ -678,13 +717,14 @@ dashboard.post("/api/upload", async (c) => {
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const r2Key = `users/${user.id}/${Date.now()}-${safeName}`;
   const mediaType = getMediaType(file);
+  const assetId = generateAssetId();
   await c.env.BUCKET.put(r2Key, file.stream(), {
     httpMetadata: { contentType: file.type || "application/octet-stream" },
   });
   await c.env.DB.prepare(
-    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type, asset_id) VALUES (?, ?, ?, ?, ?, ?)"
   )
-    .bind(user.id, r2Key, file.name, size, mediaType)
+    .bind(user.id, r2Key, file.name, size, mediaType, assetId)
     .run();
   const row = await c.env.DB.prepare("SELECT id FROM files WHERE user_id = ? AND r2_key = ?")
     .bind(user.id, r2Key)
@@ -740,6 +780,118 @@ dashboard.get("/dashboard/:userId/storage/download/:id", async (c) => {
       "Content-Disposition": `attachment; filename="${r.filename.replace(/"/g, '\\"')}"`,
     },
   });
+});
+
+// View file inline (open in browser / watch, not download)
+dashboard.get("/dashboard/:userId/storage/view/:id", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  const id = Number(c.req.param("id"));
+  const row = await c.env.DB.prepare(
+    "SELECT r2_key, filename FROM files WHERE user_id = ? AND id = ?"
+  )
+    .bind(user.id, id)
+    .first();
+  if (!row) return c.notFound();
+  const r = row as { r2_key: string; filename: string };
+  const obj = await c.env.BUCKET.get(r.r2_key);
+  if (!obj) return c.notFound();
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": obj.httpMetadata?.contentType ?? "application/octet-stream",
+      "Content-Disposition": "inline",
+    },
+  });
+});
+
+// File detail page: preview, copy link, open original, download, metadata, delete
+dashboard.get("/dashboard/:userId/storage/file/:id", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  const id = Number(c.req.param("id"));
+  let row = await c.env.DB.prepare(
+    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type, asset_id FROM files WHERE user_id = ? AND id = ?"
+  )
+    .bind(user.id, id)
+    .first();
+  if (!row) return c.notFound();
+  const f = row as { id: number; filename: string; r2_key: string; size_bytes: number; uploaded_at: string; media_type: string; asset_id: string | null };
+  let assetId = f.asset_id;
+  if (!assetId || assetId.trim() === "") {
+    assetId = generateAssetId();
+    await c.env.DB.prepare("UPDATE files SET asset_id = ? WHERE id = ? AND (asset_id IS NULL OR asset_id = '')")
+      .bind(assetId, f.id)
+      .run();
+  }
+  const viewUrl = `${new URL(c.req.url).origin}/dashboard/${userId}/storage/view/${f.id}`;
+  const fullPath = `${userId}/${f.filename}`;
+  const metaJson = JSON.stringify(
+    { identifier: userId, uploaded_at: f.uploaded_at, name: f.filename, uploaded_by: user.email },
+    null,
+    2
+  );
+  const contentType = "application/octet-stream"; // we don't store it in DB; could derive from filename
+  const obj = await c.env.BUCKET.get(f.r2_key);
+  const ct = obj?.httpMetadata?.contentType ?? contentType;
+  const isImage = (ct || "").startsWith("image/");
+  const isVideo = (ct || "").startsWith("video/");
+  const isAudio = (ct || "").startsWith("audio/");
+  const previewUrl = `/dashboard/${userId}/storage/view/${f.id}`;
+  return c.html(
+    LAYOUT(
+      f.filename,
+      html`
+        <div class="app">
+          ${SIDEBAR(user, "storage", userId)}
+          <main class="main">
+            <a href="/dashboard/${userId}/storage" class="back-link">${raw(ICONS.folder)} Back to Storage</a>
+            <h1>${escapeHtml(f.filename)}</h1>
+            <div class="file-detail">
+              <div class="file-preview">
+                ${isImage ? raw(`<img src="${previewUrl}" alt="${escapeHtml(f.filename)}" />`) : ""}
+                ${isVideo ? raw(`<video src="${previewUrl}" controls />`) : ""}
+                ${isAudio ? raw(`<audio src="${previewUrl}" controls />`) : ""}
+                ${!isImage && !isVideo && !isAudio ? raw(`<span class="usage">No preview for this file type</span>`) : ""}
+              </div>
+              <div class="file-details-panel">
+                <div class="row"><span class="k">Filename</span><span class="v">${escapeHtml(f.filename)}</span></div>
+                <div class="row"><span class="k">Type</span><span class="v">${escapeHtml(f.media_type || "other")}</span></div>
+                <div class="row"><span class="k">Size</span><span class="v">${formatBytes(f.size_bytes)}</span></div>
+                <div class="row"><span class="k">Full path</span><span class="v">${escapeHtml(fullPath)}</span></div>
+                <div class="row"><span class="k">Asset ID</span><span class="v">${escapeHtml(assetId)}</span></div>
+                <h3>Metadata</h3>
+                <pre>${escapeHtml(metaJson)}</pre>
+                <div class="file-actions">
+                  <button type="button" class="btn btn-ghost" id="copy-link-btn">${raw(ICONS.copy)} <span id="copy-label">Copy link</span></button>
+                  <a href="${previewUrl}" target="_blank" rel="noopener" class="btn btn-ghost">${raw(ICONS.external)} Open original</a>
+                  <a href="/dashboard/${userId}/storage/download/${f.id}" class="btn btn-ghost">${raw(ICONS.download)} Download</a>
+                </div>
+                <div class="file-delete-wrap">
+                  <form method="post" action="/dashboard/${userId}/storage/delete" onsubmit="return confirm('Delete this file?');">
+                    <input type="hidden" name="id" value="${f.id}" />
+                    <button type="submit" class="btn btn-danger">${raw(ICONS.trash)} Delete</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+            <script>
+              document.getElementById('copy-link-btn').onclick = function() {
+                var url = ${JSON.stringify(viewUrl)};
+                navigator.clipboard.writeText(url).then(function() {
+                  var L = document.getElementById('copy-label');
+                  if (L) { L.textContent = 'Copied!'; setTimeout(function() { L.textContent = 'Copy link'; }, 2000); }
+                });
+              };
+            </script>
+          </main>
+        </div>
+      `
+    )
+  );
 });
 
 // ---------- Admin (root only) ----------

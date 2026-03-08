@@ -87,3 +87,12 @@ export function generatePublicId(): string {
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => PUBLIC_ID_CHARS[b % PUBLIC_ID_CHARS.length]).join("");
 }
+
+const ASSET_ID_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+const ASSET_ID_LEN = 16;
+
+export function generateAssetId(): string {
+  const bytes = new Uint8Array(ASSET_ID_LEN);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => ASSET_ID_CHARS[b % ASSET_ID_CHARS.length]).join("");
+}
