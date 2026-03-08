@@ -90,9 +90,11 @@ async function getCurrentUser(c: any): Promise<User | null> {
     .first();
   if (!row) return null;
   const r = row as User & { public_id: string | null };
-  if (!r.public_id) {
+  if (!r.public_id || r.public_id.trim() === "") {
     const publicId = generatePublicId();
-    await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, r.id).run();
+    await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ? AND (public_id IS NULL OR public_id = '')")
+      .bind(publicId, r.id)
+      .run();
     r.public_id = publicId;
   }
   return r as User;
@@ -183,9 +185,17 @@ app.post("/login", async (c) => {
       .run();
     setCookie(c, "sid", sid, { path: "/", httpOnly: true, maxAge: 60 * 60 * 24 * 7, sameSite: "Lax" });
     let publicId = (user as any).public_id;
-    if (!publicId) {
-      publicId = generatePublicId();
-      await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, (user as any).id).run();
+    if (!publicId || String(publicId).trim() === "") {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        publicId = generatePublicId();
+        const r = await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ? AND (public_id IS NULL OR public_id = '')")
+          .bind(publicId, (user as any).id)
+          .run();
+        if (r.meta && (r.meta as any).changes > 0) break;
+      }
+      const row = await c.env.DB.prepare("SELECT public_id FROM users WHERE id = ?").bind((user as any).id).first();
+      const stored = (row as any)?.public_id;
+      if (stored && String(stored).trim() !== "") publicId = stored;
     }
     return c.redirect(`/dashboard/${publicId}`);
   } catch (err) {
@@ -707,7 +717,7 @@ admin.get("/admin", async (c) => {
           ${SIDEBAR(user, "admin", user.public_id)}
           <main class="main">
             <h1>Admin – All users</h1>
-            <p class="usage">There is no separate root password. Log in with the same email and password you used to sign up; root is just a flag on your user. To make an account root, run in D1: <code>UPDATE users SET is_root = 1 WHERE email = 'your@email.com';</code></p>
+            <p class="usage"><strong>Root account:</strong> There is no separate “root” user or “admin” password. The root account is whichever normal account you promoted. So the root <em>username</em> = that user’s email, and the root <em>password</em> = the password they used when they signed up. To make an account root, run in D1: <code>UPDATE users SET is_root = 1 WHERE email = 'your@email.com';</code> (use the email you actually signed up with.)</p>
             <table>
               <thead><tr><th>ID</th><th>Email</th><th>Quota (GB)</th><th>Used</th><th>Root</th><th>Created</th></tr></thead>
               <tbody>

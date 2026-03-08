@@ -42,9 +42,24 @@ npm run db:local    # for local dev
 npm run db:migrate  # for production (run before first deploy)
 ```
 
-### 3. Create a root account
+### 3. Give existing users a URL id (if you had users before public_id)
 
-After signing up once via the app, promote your user to root in D1:
+If you already had user accounts before adding the `public_id` column, run all migrations (including the backfill) so every account gets a user id for URLs:
+
+```bash
+npx wrangler d1 migrations apply i69-storage-db --remote
+```
+
+That applies any new migrations, including one that sets `public_id` for all users that don’t have it yet.
+
+### 4. Create a root account
+
+**There is no separate “root” user or “admin” password.** The root account is any normal account you promote. So:
+
+- **Root user** = the **email** you used when you signed up (e.g. `you@example.com`).
+- **Root password** = the **password** you chose for that account when you signed up.
+
+After signing up once via the app, promote that user to root in D1:
 
 **Local:**
 
@@ -58,7 +73,7 @@ npx wrangler d1 execute i69-storage-db --local --command "UPDATE users SET is_ro
 npx wrangler d1 execute i69-storage-db --remote --command "UPDATE users SET is_root = 1 WHERE email = 'your@email.com';"
 ```
 
-### 4. Deploy
+### 5. Deploy
 
 ```bash
 npm run deploy
