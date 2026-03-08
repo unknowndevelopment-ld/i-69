@@ -78,3 +78,12 @@ export function sessionExpiry(): string {
   d.setDate(d.getDate() + 7);
   return d.toISOString();
 }
+
+const PUBLIC_ID_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const PUBLIC_ID_LEN = 20;
+
+export function generatePublicId(): string {
+  const bytes = new Uint8Array(PUBLIC_ID_LEN);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => PUBLIC_ID_CHARS[b % PUBLIC_ID_CHARS.length]).join("");
+}

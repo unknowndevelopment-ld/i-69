@@ -6,7 +6,9 @@ A file storage app that runs on **Cloudflare Workers**, uses **R2** for files an
 
 - **Sign up / Log in** – Email + password (stored hashed in D1).
 - **Storage limits** – New users get **10 GB**; max **50 GB** per user (admin can set quota).
-- **Root account** – Admin view of all users; root is set in the database (see below).
+- **Root account** – There is **no separate root password**. You sign up with your email and password, then run one SQL command to mark that user as root. You then log in with the **same email and password**; root is just a flag that unlocks the Admin page.
+- **Dashboard** – Total Images / Audios / Videos, Monthly Bandwidth, Total File Size, and a Monthly Upload Trends chart (images, videos, audios).
+- **Storage** – `/storage` lists all your files and an “Upload Assets” modal with drag-and-drop and an upload queue (progress and ETA).
 - **Upload / Download / Delete** – Files stored in Cloudflare R2.
 
 ## Setup
@@ -31,6 +33,8 @@ database_id = "YOUR_DATABASE_ID_HERE"
 ```
 
 ### 2. Run migrations
+
+Both migrations (schema + `media_type` for dashboard/storage) must be applied:
 
 ```bash
 npm install

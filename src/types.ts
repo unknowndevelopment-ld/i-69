@@ -6,6 +6,7 @@ export interface Env {
 
 export interface User {
   id: number;
+  public_id: string;
   email: string;
   quota_gb: number;
   used_bytes: number;

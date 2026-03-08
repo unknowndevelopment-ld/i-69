@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { html, raw } from "hono/html";
-import { hashPassword, verifyPassword, randomSessionId, sessionExpiry } from "./auth";
+import { hashPassword, verifyPassword, randomSessionId, sessionExpiry, generatePublicId } from "./auth";
 import { DEFAULT_QUOTA_GB, MAX_QUOTA_GB } from "./types";
 import type { Env, User } from "./types";
 
@@ -33,6 +33,31 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
     th, td { text-align: left; padding: 0.5rem; border-bottom: 1px solid #27272a; }
     .usage { font-size: 0.875rem; color: #a1a1aa; margin-bottom: 1rem; }
     .root-badge { background: #7c3aed; color: #fff; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.75rem; }
+    .app { display: flex; min-height: 100vh; }
+    .sidebar { width: 220px; background: #18181b; padding: 1rem; display: flex; flex-direction: column; }
+    .sidebar a { color: #a1a1aa; text-decoration: none; padding: 0.5rem 0.75rem; border-radius: 6px; margin-bottom: 2px; }
+    .sidebar a:hover, .sidebar a.active { color: #fff; background: #27272a; }
+    .sidebar .brand { font-weight: 600; color: #fff; margin-bottom: 1rem; padding: 0 0.75rem; }
+    .sidebar .nav { flex: 1; }
+    .sidebar .user { font-size: 0.75rem; color: #71717a; padding: 0.75rem; margin-top: auto; border-top: 1px solid #27272a; }
+    .main { flex: 1; padding: 1.5rem; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .card { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; }
+    .card h3 { font-size: 0.75rem; color: #71717a; margin: 0 0 0.25rem 0; text-transform: uppercase; }
+    .card .value { font-size: 1.5rem; font-weight: 600; }
+    .chart-wrap { background: #18181b; border: 1px solid #27272a; border-radius: 8px; padding: 1rem; margin-bottom: 1.5rem; max-width: 640px; }
+    .chart-wrap h3 { margin-top: 0; font-size: 1rem; }
+    .upload-zone { border: 2px dashed #3f3f46; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; margin-bottom: 1rem; }
+    .upload-zone:hover { border-color: #7c3aed; background: #18181b; }
+    .upload-zone .icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .queue-item { display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; background: #18181b; border-radius: 6px; margin-bottom: 0.5rem; }
+    .queue-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .queue-item .status { color: #71717a; font-size: 0.875rem; margin-left: 0.5rem; }
+    .queue-item .remove { cursor: pointer; color: #71717a; }
+    .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal-inner { background: #18181b; border: 1px solid #27272a; border-radius: 12px; padding: 1.5rem; max-width: 480px; width: 90%; }
+    .modal-inner h2 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
+    .modal-inner .close { background: none; border: none; color: #71717a; cursor: pointer; font-size: 1.25rem; }
   </style>
 </head>
 <body>
@@ -40,16 +65,37 @@ const LAYOUT = (title: string, body: ReturnType<typeof raw>) => html`
 </body>
 </html>`;
 
+function SIDEBAR(user: User, active: "dashboard" | "upload" | "storage" | "admin", userId: string) {
+  return html`
+  <div class="sidebar">
+    <div class="brand">i69 Storage</div>
+    <nav class="nav">
+      <a href="/dashboard/${userId}" class="${active === "dashboard" ? "active" : ""}">Dashboard</a>
+      <a href="/dashboard/${userId}/upload" class="${active === "upload" ? "active" : ""}">Upload</a>
+      <a href="/storage/${userId}" class="${active === "storage" ? "active" : ""}">Storage</a>
+      ${user.is_root ? html`<a href="/admin" class="${active === "admin" ? "active" : ""}">Admin</a>` : ""}
+      <a href="/logout">Log out</a>
+    </nav>
+    <div class="user">${escapeHtml(user.email)}</div>
+  </div>`;
+}
+
 async function getCurrentUser(c: any): Promise<User | null> {
   const sid = getCookie(c, "sid");
   if (!sid) return null;
   const row = await c.env.DB.prepare(
-    "SELECT u.id, u.email, u.quota_gb, u.used_bytes, u.is_root FROM users u INNER JOIN sessions s ON s.user_id = u.id WHERE s.id = ? AND s.expires_at > datetime('now')"
+    "SELECT u.id, u.public_id, u.email, u.quota_gb, u.used_bytes, u.is_root FROM users u INNER JOIN sessions s ON s.user_id = u.id WHERE s.id = ? AND s.expires_at > datetime('now')"
   )
     .bind(sid)
     .first();
   if (!row) return null;
-  return row as User;
+  const r = row as User & { public_id: string | null };
+  if (!r.public_id) {
+    const publicId = generatePublicId();
+    await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, r.id).run();
+    r.public_id = publicId;
+  }
+  return r as User;
 }
 
 function requireAuth(app: Hono<{ Bindings: Env; Variables: { user: User } }>) {
@@ -63,10 +109,18 @@ function requireAuth(app: Hono<{ Bindings: Env; Variables: { user: User } }>) {
   });
 }
 
+function ensureUserMatch(c: any, userId: string): Response | null {
+  const user = c.get("user") as User;
+  if (user.public_id !== userId) {
+    return c.redirect(`/dashboard/${user.public_id}`);
+  }
+  return null;
+}
+
 // ---------- Public routes ----------
 app.get("/", async (c) => {
   const user = await getCurrentUser(c);
-  if (user) return c.redirect("/dashboard");
+  if (user) return c.redirect(`/dashboard/${user.public_id}`);
   return c.redirect("/login");
 });
 
@@ -104,7 +158,7 @@ app.post("/login", async (c) => {
     );
   }
   const user = await c.env.DB.prepare(
-    "SELECT id, email, password_hash, quota_gb, used_bytes, is_root FROM users WHERE email = ?"
+    "SELECT id, public_id, email, password_hash, quota_gb, used_bytes, is_root FROM users WHERE email = ?"
   )
     .bind(email)
     .first();
@@ -127,7 +181,12 @@ app.post("/login", async (c) => {
     .bind(sid, (user as any).id, expires)
     .run();
   setCookie(c, "sid", sid, { path: "/", httpOnly: true, maxAge: 60 * 60 * 24 * 7, sameSite: "Lax" });
-  return c.redirect("/dashboard");
+  let publicId = (user as any).public_id;
+  if (!publicId) {
+    publicId = generatePublicId();
+    await c.env.DB.prepare("UPDATE users SET public_id = ? WHERE id = ?").bind(publicId, (user as any).id).run();
+  }
+  return c.redirect(`/dashboard/${publicId}`);
 });
 
 app.get("/signup", (c) =>
@@ -188,10 +247,11 @@ app.post("/signup", async (c) => {
     );
   }
   const passwordHash = await hashPassword(password);
+  const publicId = generatePublicId();
   await c.env.DB.prepare(
-    "INSERT INTO users (email, password_hash, quota_gb) VALUES (?, ?, ?)"
+    "INSERT INTO users (email, password_hash, quota_gb, public_id) VALUES (?, ?, ?, ?)"
   )
-    .bind(email, passwordHash, DEFAULT_QUOTA_GB)
+    .bind(email, passwordHash, DEFAULT_QUOTA_GB, publicId)
     .run();
   return c.redirect("/login");
 });
@@ -211,51 +271,63 @@ requireAuth(dashboard);
 
 dashboard.get("/dashboard", async (c) => {
   const user = c.get("user");
-  const files = await c.env.DB.prepare(
-    "SELECT id, filename, r2_key, size_bytes, uploaded_at FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
-  )
-    .bind(user.id)
-    .all();
-  const usedGb = (user.used_bytes / (1024 * 1024 * 1024)).toFixed(2);
-  const quotaGb = user.quota_gb;
+  return c.redirect(`/dashboard/${user.public_id}`);
+});
+
+dashboard.get("/dashboard/:userId", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
   return c.html(
     LAYOUT(
       "Dashboard",
       html`
-        <nav>
-          ${user.is_root ? html`<a href="/admin">Admin</a> | ` : ""}
-          <a href="/logout">Log out</a>
-        </nav>
-        <h1>Dashboard ${user.is_root ? raw(`<span class="root-badge">root</span>`) : ""}</h1>
-        <p class="usage">Storage: ${usedGb} GB / ${quotaGb} GB</p>
-        <form method="post" action="/upload" enctype="multipart/form-data">
-          <input type="file" name="file" required />
-          <button type="submit" class="btn btn-primary">Upload</button>
-        </form>
-        <h2>Your files</h2>
-        ${(files.results?.length ?? 0) === 0
-          ? html`<p>No files yet.</p>`
-          : html`
-          <table>
-            <thead><tr><th>Name</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
-            <tbody>
-              ${raw(
-                (files.results as any[]).map(
-                  (f: any) =>
-                    `<tr>
-                      <td>${escapeHtml(f.filename)}</td>
-                      <td>${formatBytes(f.size_bytes)}</td>
-                      <td>${escapeHtml(f.uploaded_at)}</td>
-                      <td><a href="/download/${f.id}" class="btn btn-ghost">Download</a>
-                        <form method="post" action="/delete" style="display:inline" onsubmit="return confirm('Delete this file?');">
-                        <input type="hidden" name="id" value="${f.id}" />
-                        <button type="submit" class="btn btn-danger">Delete</button>
-                      </form></td>
-                    </tr>`
-                ).join("")
-              )}
-            </tbody>
-          </table>`}
+        <div class="app">
+          ${SIDEBAR(user, "dashboard", userId)}
+          <main class="main">
+            <h1>Dashboard ${user.is_root ? raw(`<span class="root-badge">root</span>`) : ""}</h1>
+            <div class="cards">
+              <div class="card"><h3>Total Images</h3><div class="value" id="stat-images">–</div></div>
+              <div class="card"><h3>Total Audios</h3><div class="value" id="stat-audios">–</div></div>
+              <div class="card"><h3>Total Videos</h3><div class="value" id="stat-videos">–</div></div>
+              <div class="card"><h3>Monthly Bandwidth</h3><div class="value" id="stat-bandwidth">–</div></div>
+              <div class="card"><h3>Total File Size</h3><div class="value" id="stat-totalsize">–</div></div>
+            </div>
+            <div class="chart-wrap">
+              <h3>Monthly Upload Trends</h3>
+              <p style="color:#71717a;font-size:0.875rem;margin-top:0;">Number of uploads by media type per month</p>
+              <canvas id="chart-trends" width="600" height="280"></canvas>
+            </div>
+            <p><a href="/dashboard/${userId}/upload">Upload files</a> · <a href="/storage/${userId}">Storage</a></p>
+          </main>
+        </div>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+        <script>
+          (function() {
+            fetch('/api/stats').then(r => r.json()).then(function(d) {
+              document.getElementById('stat-images').textContent = d.totalImages ?? '0';
+              document.getElementById('stat-audios').textContent = d.totalAudios ?? '0';
+              document.getElementById('stat-videos').textContent = d.totalVideos ?? '0';
+              document.getElementById('stat-bandwidth').textContent = (d.monthlyBandwidthBytes / 1e9).toFixed(2) + ' GB';
+              document.getElementById('stat-totalsize').textContent = (d.totalFileSizeBytes / 1e9).toFixed(2) + ' GB';
+              var trends = d.monthlyTrends || [];
+              var labels = trends.map(function(t) { return t.month; });
+              new Chart(document.getElementById('chart-trends'), {
+                type: 'bar',
+                data: {
+                  labels: labels,
+                  datasets: [
+                    { label: 'Images', data: trends.map(function(t) { return t.images; }), backgroundColor: 'rgb(59, 130, 246)' },
+                    { label: 'Videos', data: trends.map(function(t) { return t.videos; }), backgroundColor: 'rgb(249, 115, 22)' },
+                    { label: 'Audios', data: trends.map(function(t) { return t.audios; }), backgroundColor: 'rgb(34, 197, 94)' }
+                  ]
+                },
+                options: { scales: { x: { stacked: true }, y: { stacked: true } } }
+              });
+            });
+          })();
+        </script>
       `
     )
   );
@@ -266,7 +338,7 @@ dashboard.post("/upload", async (c) => {
   const form = await c.req.parseBody();
   const file = form["file"];
   if (!file || !(file instanceof File)) {
-    return c.redirect("/dashboard");
+    return c.redirect(`/dashboard/${user.public_id}`);
   }
   const size = file.size;
   const quotaBytes = user.quota_gb * 1024 * 1024 * 1024;
@@ -276,47 +348,309 @@ dashboard.post("/upload", async (c) => {
         <nav><a href="/logout">Log out</a></nav>
         <h1>Dashboard</h1>
         <p class="error">Upload would exceed your ${user.quota_gb} GB quota. Used: ${(user.used_bytes / 1e9).toFixed(2)} GB.</p>
-        <a href="/dashboard">Back to dashboard</a>`)
+        <a href="/dashboard/${user.public_id}">Back to dashboard</a>`)
     );
   }
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
   const r2Key = `users/${user.id}/${Date.now()}-${safeName}`;
+  const mediaType = getMediaType(file);
   await c.env.BUCKET.put(r2Key, file.stream(), {
     httpMetadata: { contentType: file.type || "application/octet-stream" },
   });
   await c.env.DB.prepare(
-    "INSERT INTO files (user_id, r2_key, filename, size_bytes) VALUES (?, ?, ?, ?)"
+    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type) VALUES (?, ?, ?, ?, ?)"
   )
-    .bind(user.id, r2Key, file.name, size)
+    .bind(user.id, r2Key, file.name, size, mediaType)
     .run();
   await c.env.DB.prepare("UPDATE users SET used_bytes = used_bytes + ? WHERE id = ?")
     .bind(size, user.id)
     .run();
-  return c.redirect("/dashboard");
+  return c.redirect(`/dashboard/${user.public_id}`);
 });
 
-dashboard.post("/delete", async (c) => {
+// ---------- API: stats (for dashboard) ----------
+dashboard.get("/api/stats", async (c) => {
+  const user = c.get("user");
+  const byType = await c.env.DB.prepare(
+    "SELECT media_type, COUNT(*) as c, SUM(size_bytes) as total FROM files WHERE user_id = ? GROUP BY media_type"
+  )
+    .bind(user.id)
+    .all();
+  const monthBandwidth = await c.env.DB.prepare(
+    "SELECT COALESCE(SUM(size_bytes), 0) as total FROM files WHERE user_id = ? AND strftime('%Y-%m', uploaded_at) = strftime('%Y-%m', 'now')"
+  )
+    .bind(user.id)
+    .first();
+  const trends = await c.env.DB.prepare(
+    "SELECT strftime('%Y-%m', uploaded_at) as month, media_type, COUNT(*) as c FROM files WHERE user_id = ? AND uploaded_at >= datetime('now', '-12 months') GROUP BY month, media_type ORDER BY month"
+  )
+    .bind(user.id)
+    .all();
+  const counts = { image: 0, audio: 0, video: 0, other: 0 };
+  let totalFileSize = 0;
+  for (const row of (byType.results || []) as any[]) {
+    counts[row.media_type] = row.c;
+    totalFileSize += row.total || 0;
+  }
+  const monthlyBandwidthBytes = Number((monthBandwidth as any)?.total ?? 0);
+  const months: Record<string, { images: number; audios: number; videos: number }> = {};
+  const now = new Date();
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    months[key] = { images: 0, audios: 0, videos: 0 };
+  }
+  for (const row of (trends.results || []) as any[]) {
+    const key = row.month;
+    if (!months[key]) months[key] = { images: 0, audios: 0, videos: 0 };
+    if (row.media_type === "image") months[key].images += row.c;
+    if (row.media_type === "audio") months[key].audios += row.c;
+    if (row.media_type === "video") months[key].videos += row.c;
+  }
+  const monthlyTrends = Object.entries(months)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, v]) => ({ month, ...v }));
+  return c.json({
+    totalImages: counts.image,
+    totalAudios: counts.audio,
+    totalVideos: counts.video,
+    monthlyBandwidthBytes,
+    totalFileSizeBytes: totalFileSize,
+    monthlyTrends,
+  });
+});
+
+// ---------- Storage: redirect /storage -> /storage/:userId ----------
+dashboard.get("/storage", async (c) => {
+  const user = c.get("user");
+  return c.redirect(`/storage/${user.public_id}`);
+});
+
+// ---------- Storage page: file list + upload queue ----------
+dashboard.get("/storage/:userId", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  const files = await c.env.DB.prepare(
+    "SELECT id, filename, r2_key, size_bytes, uploaded_at, media_type FROM files WHERE user_id = ? ORDER BY uploaded_at DESC"
+  )
+    .bind(user.id)
+    .all();
+  const usedGb = (user.used_bytes / (1024 * 1024 * 1024)).toFixed(2);
+  const quotaGb = user.quota_gb;
+  return c.html(
+    LAYOUT(
+      "Storage",
+      html`
+        <div class="app">
+          ${SIDEBAR(user, "storage", userId)}
+          <main class="main">
+            <h1>Storage</h1>
+            <p class="usage">${usedGb} GB / ${quotaGb} GB used</p>
+            <a href="/dashboard/${userId}/upload" class="btn btn-primary">Upload Assets</a>
+            <h2 style="margin-top:1.5rem;">Your files</h2>
+            ${(files.results?.length ?? 0) === 0
+              ? html`<p>No files yet. <a href="/dashboard/${userId}/upload">Upload assets</a>.</p>`
+              : html`
+              <table>
+                <thead><tr><th>Name</th><th>Type</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+                <tbody id="file-list">
+                  ${raw(
+                    (files.results as any[]).map(
+                      (f: any) =>
+                        `<tr data-id="${f.id}">
+                          <td>${escapeHtml(f.filename)}</td>
+                          <td>${escapeHtml(f.media_type || "other")}</td>
+                          <td>${formatBytes(f.size_bytes)}</td>
+                          <td>${escapeHtml(f.uploaded_at)}</td>
+                          <td><a href="/storage/${userId}/download/${f.id}" class="btn btn-ghost">Download</a>
+                            <form method="post" action="/storage/${userId}/delete" style="display:inline" onsubmit="return confirm('Delete this file?');">
+                              <input type="hidden" name="id" value="${f.id}" />
+                              <button type="submit" class="btn btn-danger">Delete</button>
+                            </form></td>
+                        </tr>`
+                    ).join("")
+                  )}
+                </tbody>
+              </table>`}
+          </main>
+        </div>
+      `
+    )
+  );
+});
+
+// ---------- Upload page: /dashboard/:userId/upload ----------
+dashboard.get("/dashboard/:userId/upload", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  return c.html(
+    LAYOUT(
+      "Upload",
+      html`
+        <div class="app">
+          ${SIDEBAR(user, "upload", userId)}
+          <main class="main">
+            <h1>Upload Assets</h1>
+            <div class="upload-zone" id="upload-zone">
+              <div class="icon">↑</div>
+              <div>Drag & drop image, video, or audio files here, or click to select</div>
+            </div>
+            <input type="file" id="upload-input" multiple accept="image/*,video/*,audio/*" style="display:none;" />
+            <div id="upload-queue"></div>
+            <div style="margin-top:1rem;">
+              <button type="button" class="btn btn-primary" id="upload-all-btn" disabled>Upload All</button>
+              <a href="/storage/${userId}" class="btn btn-ghost">View storage</a>
+            </div>
+          </main>
+        </div>
+        <script>
+          (function() {
+            var queue = [];
+            var zone = document.getElementById('upload-zone');
+            var input = document.getElementById('upload-input');
+            var queueEl = document.getElementById('upload-queue');
+            var uploadAllBtn = document.getElementById('upload-all-btn');
+            function renderQueue() {
+              queueEl.innerHTML = queue.map(function(item, i) {
+                var status = item.status || 'Queued';
+                if (item.progress != null) status = 'Uploading ' + item.progress + '%' + (item.eta != null ? ' – ' + item.eta + 's left' : '');
+                if (item.done) status = 'Done';
+                if (item.error) status = 'Failed';
+                return '<div class="queue-item" data-i="' + i + '">' +
+                  '<span class="name">' + (function(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;})(item.file.name) + '</span>' +
+                  '<span class="status">' + status + '</span>' +
+                  (item.done || item.error ? '' : '<span class="remove" data-i="' + i + '" aria-label="Remove">&times;</span>') +
+                  '</div>';
+              }).join('');
+              uploadAllBtn.disabled = queue.length === 0 || queue.every(function(x) { return x.done || x.error; });
+              queueEl.querySelectorAll('.remove').forEach(function(el) {
+                el.onclick = function() { var i = parseInt(el.getAttribute('data-i'), 10); queue.splice(i, 1); renderQueue(); };
+              });
+            }
+            function addFiles(files) {
+              for (var i = 0; i < files.length; i++) {
+                var f = files[i];
+                if (!f.type || (!f.type.startsWith('image/') && !f.type.startsWith('video/') && !f.type.startsWith('audio/'))) continue;
+                queue.push({ file: f, status: 'Queued' });
+              }
+              renderQueue();
+            }
+            zone.onclick = function() { input.click(); };
+            zone.ondragover = function(e) { e.preventDefault(); zone.style.borderColor = '#7c3aed'; };
+            zone.ondragleave = function() { zone.style.borderColor = ''; };
+            zone.ondrop = function(e) { e.preventDefault(); zone.style.borderColor = ''; addFiles(e.dataTransfer.files); };
+            input.onchange = function() { addFiles(input.files || []); input.value = ''; };
+            function uploadOne(item, onProgress) {
+              return new Promise(function(resolve, reject) {
+                var xhr = new XMLHttpRequest();
+                var fd = new FormData();
+                fd.append('file', item.file);
+                var start = Date.now();
+                var loaded = 0;
+                xhr.upload.onprogress = function(e) {
+                  if (e.lengthComputable) {
+                    loaded = e.loaded;
+                    item.progress = Math.round(100 * e.loaded / e.total);
+                    var elapsed = (Date.now() - start) / 1000;
+                    var rate = elapsed > 0 ? loaded / elapsed : 0;
+                    item.eta = rate > 0 ? Math.round((e.total - e.loaded) / rate) : null;
+                    onProgress();
+                  }
+                };
+                xhr.onload = function() {
+                  if (xhr.status >= 200 && xhr.status < 300) { item.done = true; resolve(); }
+                  else { item.error = true; reject(new Error(xhr.statusText)); }
+                  onProgress();
+                };
+                xhr.onerror = function() { item.error = true; onProgress(); reject(new Error('Network error')); };
+                xhr.open('POST', '/api/upload');
+                xhr.send(fd);
+              });
+            }
+            uploadAllBtn.onclick = function() {
+              var pending = queue.filter(function(x) { return !x.done && !x.error; });
+              if (pending.length === 0) return;
+              uploadAllBtn.disabled = true;
+              function runNext(idx) {
+                if (idx >= pending.length) { uploadAllBtn.disabled = false; if (queue.every(function(x) { return x.done || x.error; })) setTimeout(function() { location.reload(); }, 800); return; }
+                var item = pending[idx];
+                uploadOne(item, renderQueue).then(function() { runNext(idx + 1); }).catch(function() { runNext(idx + 1); });
+              }
+              runNext(0);
+            };
+          })();
+        </script>
+      `
+    )
+  );
+});
+
+// ---------- API: upload (JSON, for queue with progress) ----------
+dashboard.post("/api/upload", async (c) => {
   const user = c.get("user");
   const form = await c.req.parseBody();
+  const file = form["file"];
+  if (!file || !(file instanceof File)) {
+    return c.json({ ok: false, error: "No file" }, 400);
+  }
+  const size = file.size;
+  const quotaBytes = user.quota_gb * 1024 * 1024 * 1024;
+  if (user.used_bytes + size > quotaBytes) {
+    return c.json({ ok: false, error: "Quota exceeded" }, 400);
+  }
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const r2Key = `users/${user.id}/${Date.now()}-${safeName}`;
+  const mediaType = getMediaType(file);
+  await c.env.BUCKET.put(r2Key, file.stream(), {
+    httpMetadata: { contentType: file.type || "application/octet-stream" },
+  });
+  await c.env.DB.prepare(
+    "INSERT INTO files (user_id, r2_key, filename, size_bytes, media_type) VALUES (?, ?, ?, ?, ?)"
+  )
+    .bind(user.id, r2Key, file.name, size, mediaType)
+    .run();
+  const row = await c.env.DB.prepare("SELECT id FROM files WHERE user_id = ? AND r2_key = ?")
+    .bind(user.id, r2Key)
+    .first();
+  const id = (row as any)?.id;
+  await c.env.DB.prepare("UPDATE users SET used_bytes = used_bytes + ? WHERE id = ?")
+    .bind(size, user.id)
+    .run();
+  return c.json({ ok: true, id, filename: file.name });
+});
+
+dashboard.post("/storage/:userId/delete", async (c) => {
+  const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
+  const form = await c.req.parseBody();
   const id = Number(form["id"]);
-  if (!id) return c.redirect("/dashboard");
+  if (!id) return c.redirect(`/storage/${userId}`);
   const row = await c.env.DB.prepare(
     "SELECT id, r2_key, size_bytes FROM files WHERE user_id = ? AND id = ?"
   )
     .bind(user.id, id)
     .first();
-  if (!row) return c.redirect("/dashboard");
+  if (!row) return c.redirect(`/storage/${userId}`);
   const r = row as { r2_key: string; size_bytes: number };
   await c.env.BUCKET.delete(r.r2_key);
   await c.env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
   await c.env.DB.prepare("UPDATE users SET used_bytes = used_bytes - ? WHERE id = ?")
     .bind(r.size_bytes, user.id)
     .run();
-  return c.redirect("/dashboard");
+  return c.redirect(`/storage/${userId}`);
 });
 
-dashboard.get("/download/:id", async (c) => {
+dashboard.get("/storage/:userId/download/:id", async (c) => {
   const user = c.get("user");
+  const userId = c.req.param("userId");
+  const err = ensureUserMatch(c, userId);
+  if (err) return err;
   const id = Number(c.req.param("id"));
   const row = await c.env.DB.prepare(
     "SELECT r2_key, filename FROM files WHERE user_id = ? AND id = ?"
@@ -339,11 +673,13 @@ dashboard.get("/download/:id", async (c) => {
 const admin = new Hono<{ Bindings: Env; Variables: { user: User } }>();
 requireAuth(admin);
 admin.use("*", async (c, next) => {
-  if (!c.get("user").is_root) return c.redirect("/dashboard");
+  const user = c.get("user");
+  if (!user.is_root) return c.redirect(`/dashboard/${user.public_id}`);
   await next();
 });
 
 admin.get("/admin", async (c) => {
+  const user = c.get("user");
   const users = await c.env.DB.prepare(
     "SELECT id, email, quota_gb, used_bytes, is_root, created_at FROM users ORDER BY id"
   ).all();
@@ -351,27 +687,31 @@ admin.get("/admin", async (c) => {
     LAYOUT(
       "Admin",
       html`
-        <nav><a href="/dashboard">Dashboard</a> | <a href="/logout">Log out</a></nav>
-        <h1>Admin – All users</h1>
-        <table>
-          <thead><tr><th>ID</th><th>Email</th><th>Quota (GB)</th><th>Used</th><th>Root</th><th>Created</th></tr></thead>
-          <tbody>
-            ${raw(
-              (users.results as any[]).map(
-                (u: any) =>
-                  `<tr>
-                    <td>${u.id}</td>
-                    <td>${escapeHtml(u.email)}</td>
-                    <td>${u.quota_gb}</td>
-                    <td>${(u.used_bytes / 1e9).toFixed(2)} GB</td>
-                    <td>${u.is_root ? "✓" : ""}</td>
-                    <td>${escapeHtml(u.created_at)}</td>
-                  </tr>`
-              ).join("")
-            )}
-          </tbody>
-        </table>
-        <p>To create a root account, run in D1: <code>UPDATE users SET is_root = 1 WHERE email = 'your@email.com';</code></p>
+        <div class="app">
+          ${SIDEBAR(user, "admin", user.public_id)}
+          <main class="main">
+            <h1>Admin – All users</h1>
+            <p class="usage">There is no separate root password. Log in with the same email and password you used to sign up; root is just a flag on your user. To make an account root, run in D1: <code>UPDATE users SET is_root = 1 WHERE email = 'your@email.com';</code></p>
+            <table>
+              <thead><tr><th>ID</th><th>Email</th><th>Quota (GB)</th><th>Used</th><th>Root</th><th>Created</th></tr></thead>
+              <tbody>
+                ${raw(
+                  (users.results as any[]).map(
+                    (u: any) =>
+                      `<tr>
+                        <td>${u.id}</td>
+                        <td>${escapeHtml(u.email)}</td>
+                        <td>${u.quota_gb}</td>
+                        <td>${(u.used_bytes / 1e9).toFixed(2)} GB</td>
+                        <td>${u.is_root ? "✓" : ""}</td>
+                        <td>${escapeHtml(u.created_at)}</td>
+                      </tr>`
+                  ).join("")
+                )}
+              </tbody>
+            </table>
+          </main>
+        </div>
       `
     )
   );
@@ -393,6 +733,14 @@ function formatBytes(n: number): string {
   if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
   if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
   return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+function getMediaType(file: File): "image" | "audio" | "video" | "other" {
+  const t = (file.type || "").toLowerCase();
+  if (t.startsWith("image/")) return "image";
+  if (t.startsWith("audio/")) return "audio";
+  if (t.startsWith("video/")) return "video";
+  return "other";
 }
 
 export default app;
